@@ -5,10 +5,12 @@ import com.github.sardine.Sardine;
 import com.github.sardine.SardineFactory;
 import com.jcraft.jsch.JSchException;
 import org.seagrid.desktop.connectors.NextcloudStorage.Exception.NextcloudApiException;
+import org.seagrid.desktop.ui.storage.model.FileListModel;
 import org.seagrid.desktop.util.SEAGridContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
@@ -35,12 +37,12 @@ public class NextcloudStorageManager {
         isusehttps = SEAGridContext.getInstance().isUseHttps();
         rootremotepath = (isusehttps ? "https" : "http") + "://" + servername + "/" + basepath + "/" + SEAGridContext.getInstance().getUserName();
         token = SEAGridContext.getInstance().getOAuthToken();
-            sardine.setCredentials(SEAGridContext.getInstance().getUserName(), SEAGridContext.getInstance().getClientID());
-            sardine.enablePreemptiveAuthentication(SEAGridContext.getInstance().getNextcloudServername());
+        sardine.setCredentials(SEAGridContext.getInstance().getUserName(), SEAGridContext.getInstance().getClientID());
+        sardine.enablePreemptiveAuthentication(SEAGridContext.getInstance().getNextcloudServername());
     }
 
     public static NextcloudStorageManager getInstance() throws JSchException, IOException {
-        if(instance==null) {
+        if (instance == null) {
             instance = new NextcloudStorageManager();
         }
         return instance;
@@ -49,7 +51,7 @@ public class NextcloudStorageManager {
     public List<DavResource> listDirectories(String remotepath) throws IOException {
         String path = rootremotepath + remotepath;
         List<DavResource> resources;
-        if(sardine.exists(path)) {
+        if (sardine.exists(path)) {
             try {
                 resources = sardine.list(path, 1);
                 return resources;
@@ -62,6 +64,7 @@ public class NextcloudStorageManager {
 
     /**
      * Creates the folder if the folder is not present at the remote path of the nextcloud storage
+     *
      * @param remotepath
      * @throws IOException
      */
@@ -80,11 +83,11 @@ public class NextcloudStorageManager {
 
     /**
      * Create the folder at the specified path
+     *
      * @param remotepath
      */
-    public void createFolder(String remotepath)
-    {
-        String path=  rootremotepath+remotepath;
+    public void createFolder(String remotepath) {
+        String path = rootremotepath + remotepath;
 
         try {
             sardine.createDirectory(path);
@@ -92,4 +95,21 @@ public class NextcloudStorageManager {
             throw new NextcloudApiException(e);
         }
     }
+
+    public boolean isExists(String remotepath) throws IOException {
+        String[] files = remotepath.split("/");
+        String filename = files[files.length - 1];
+
+        List<DavResource> list = listDirectories("/ExperimentFiles/");
+
+        for (DavResource res : list) {
+            String resName = res.getName();
+            if (res.getName().equals(".") || res.getName().equals("..")) continue;
+            if (res.getName().equals(filename))
+                return true;
+        }
+
+        return false;
+    }
 }
+
