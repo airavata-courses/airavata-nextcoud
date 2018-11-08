@@ -84,8 +84,8 @@
 - name: ensure mysql is running and starts on boot
   service: name=mysql state=started enabled=true
   
-#- name: delete anonymous MySQL server
-#https://www.whatan00b.com/posts/mysql-secure-installation-using-ansible/
+- name: Deletes anonymous MySQL server user for localhost
+  mysql_user: user="" state="absent"
   
 - name: update mysql root password for all root accounts
   mysql_user: name=root host=localhost password=root priv='*.*:ALL,GRANT' state=present
@@ -96,7 +96,7 @@
     - localhost
     - 127.0.0.1
     - ::1
-    
+
 - name: remove the test database
   mysql_db: name=test state=absent
 
