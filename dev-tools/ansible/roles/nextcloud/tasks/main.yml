@@ -1,0 +1,157 @@
+---
+# tasks file for roles/nextcloud
+
+- name: Update all packages to the latest version
+  apt:
+    upgrade: dist
+
+- name: Install aptitude, zip and unzip, which is required to do apt-get upgrade
+  apt:
+    name: "{{ packages }}"
+  vars:
+    packages:
+    - aptitude
+    - zip
+    - unzip
+
+- name: apt-get update
+  apt:
+    update-cache: yes
+    upgrade: yes
+
+- name: 1. install Apache
+  apt: name=apache2 state=present
+
+- name: "Add repository for PHP 7.0."
+  apt_repository: 
+    repo="ppa:ondrej/php" 
+    update_cache=yes
+
+- name: 2. install PHP module for Apache
+  apt: name=libapache2-mod-php7.0 state=present
+
+- name: Install dependencies [php7.0-mbstring php7.0-curl php7.0-zip php7.0-gd php7.0-mysql php7.0-mcrypt php-xml]
+  apt: name="{{ item }}" state=present update_cache=yes
+  with_items:
+    - php7.0-mbstring
+    - php7.0-curl
+    - php7.0-zip
+    - php7.0-gd
+    - php7.0-mysql
+    - php7.0-mcrypt
+    - php7.0-xml
+
+- name: Check if the nextcloud already exists 
+  stat: path=/home/xseduser/nextcloud
+  register: check_nextcloud_dir
+
+- name: Download and unarchive nextcloud
+  unarchive:  
+    src=https://download.nextcloud.com/server/releases/nextcloud-9.0.52.zip
+    dest="/home/xseduser"
+    copy=no
+  when: check_nextcloud_dir.stat.exists == False
+
+- name: Move nextcloud to /var/www/html
+  command: mv /home/xseduser/nextcloud /var/www/html
+  when: check_nextcloud_dir.stat.exists == False
+    
+- name: Change permission
+  file: dest=/var/www/html owner=www-data group=www-data  mode=u=rwX,g=rX,o=rX recurse=yes
+  
+- name: Install base packages
+  apt: name={{ item }} state=installed
+  with_items:
+    - python-pip
+    - python3-pip
+  tags:
+    - packages
+
+- name: Upgrade pip
+  pip: name=pip state=latest
+  tags:
+    - packages
+
+- name: install python mysql bindings
+  apt: name=python-mysqldb state=installed
+
+- name: Install MariaDB
+  apt: name="{{ item }}" state=present update_cache=yes
+  with_items:
+  - mariadb-server
+  - mariadb-client
+
+- name: ensure mysql is running and starts on boot
+  service: name=mysql state=started enabled=true
+  
+#- name: delete anonymous MySQL server
+#https://www.whatan00b.com/posts/mysql-secure-installation-using-ansible/
+  
+- name: update mysql root password for all root accounts
+  mysql_user: name=root host=localhost password=root priv='*.*:ALL,GRANT' state=present
+
+- name: update mysql root password for all root accounts
+  mysql_user: name=root host={{ item }} password=root
+  with_items:
+    - localhost
+    - 127.0.0.1
+    - ::1
+    
+- name: remove the test database
+  mysql_db: name=test state=absent
+
+- name: check if nextcloud db already exists
+  shell: mysql -e 'SHOW DATABASES;' | grep nextcloud
+  register: dbstatus
+  failed_when: dbstatus.rc == 2
+  
+- name: If 0, then skip
+  debug: 
+    msg: " value is  {{ dbstatus.rc }} "
+
+- name: Create nextcloud database
+  command: mysql -e 'CREATE DATABASE nextcloud'
+  when: dbstatus.rc!=0
+  
+- name: Give admin privilages to nextcloud
+  command: mysql -e "GRANT ALL PRIVILEGES ON nextcloud.* TO 'nextcloud'@'localhost' IDENTIFIED BY 'nextcloud';"
+
+- name: Change root user password on first run
+  mysql_user: login_user=root login_password=root check_implicit_admin=yes name=nextcloud password=nextcloud priv=*.*:ALL,GRANT host={{ item }}
+  with_items:
+   - 127.0.0.1
+   - ::1
+   - localhost
+  
+- name: copy .my.cnf file with root password credentials
+  template: src=/etc/ansible/.my.cnf dest=/root/.my.cnf owner=root mode=0600
+  
+- name: copy my.cnf file to /etc/mysql/my.cnf
+  copy: src=/etc/ansible/.my.cnf dest=/etc/mysql/my.cnf owner=root mode=0600
+
+- name: enabled mod_rewrite
+  apache2_module: name=rewrite state=present
+  notify:
+    - restart apache2
+    
+##handlers##    
+#- name: restart apache2
+#  service: name=apache2 state=restarted
+
+- name: Check if the file already exists 
+  stat: path=/home/xseduser/nextcloud
+  register: check_nextcloud_dir
+
+- name: copy nextcloud.conf file to /etc/apache2/sites-available/
+  template: src=/etc/ansible/nextcloud.conf dest=/etc/apache2/sites-available/nextcloud.conf
+  
+- name: Create symbolic link 
+  file:
+    src: "/etc/apache2/sites-available/nextcloud.conf"
+    dest: "/etc/apache2/sites-enabled/nextcloud.conf"
+    state: link
+    
+- name: Enable service apache2, and not touch the state
+  service:
+    name: apache2
+    enabled: yes
