@@ -20,6 +20,7 @@
 */
 package org.seagrid.desktop.ui.experiment.create.controller;
 
+import com.jcraft.jsch.JSchException;
 import javafx.concurrent.Service;
 import javafx.concurrent.Task;
 import javafx.concurrent.WorkerStateEvent;
@@ -54,6 +55,7 @@ import org.apache.airavata.model.workspace.Project;
 import org.apache.thrift.TException;
 import org.seagrid.desktop.connectors.NextcloudStorage.NextcloudFileDownloadTask;
 import org.seagrid.desktop.connectors.NextcloudStorage.NextcloudFileUploadTask;
+import org.seagrid.desktop.connectors.NextcloudStorage.NextcloudStorageManager;
 import org.seagrid.desktop.connectors.airavata.AiravataManager;
 import org.seagrid.desktop.ui.commons.ImageButton;
 import org.seagrid.desktop.ui.commons.SEAGridDialogHelper;
@@ -369,7 +371,7 @@ public class ExperimentCreateController {
                 gaussianApps.add(appInter);
             }
         }
-        if(gaussianApps.size() > 0){
+        if(gaussianApps.size() > 0) {
             expCreateAppField.getItems().setAll(gaussianApps);
             expCreateAppField.getSelectionModel().select(0);
             for(ApplicationInterfaceDescription app : gaussianApps){
@@ -473,23 +475,27 @@ public class ExperimentCreateController {
         }
     }
 
+
     @FXML
-    private void getPreUploadedRemoteFile() {
+    private String getPreUploadedRemoteFile() {
         chosenFile.setTranslateX(20);
         chosenFile.setTranslateY(1);
+        String selectedRemoteFilePath = "";
         try {
-            String selectedRemoteFilePath = showSelectRemoteFile();
+            selectedRemoteFilePath = showSelectRemoteFile();
+
             File file = new File(selectedRemoteFilePath);
             if(selectedRemoteFilePath!=null)chosenFile.setText(file.getName());
             else chosenFile.setText(null);
             if(selectedRemoteFilePath != null && !selectedRemoteFilePath.isEmpty()) {
-                selectedRemoteFilePath = remoteDataDirRoot + (selectedRemoteFilePath.startsWith("/")
-                        ? selectedRemoteFilePath.substring(1) : selectedRemoteFilePath);
+                selectedRemoteFilePath =  selectedRemoteFilePath.startsWith("/")
+                        ? selectedRemoteFilePath.substring(1) : selectedRemoteFilePath;
             }
         } catch (IOException e) {
             SEAGridDialogHelper.showExceptionDialogAndWait(e, "Exception Dialog", pickFile.getScene().getWindow(),
                     "Failed to load remote file picker");
         }
+        return selectedRemoteFilePath;
     }
 
     private void initFileChooser(){
@@ -589,6 +595,7 @@ public class ExperimentCreateController {
                 inputDataObjectTypes.add(inputDataObjectType);
             }
         }
+
         this.experimentInputs = new HashMap<>();
         expCreateInputsGridPane.getChildren().clear();
         expCreateInputsGridPane.getRowConstraints().clear();
@@ -647,7 +654,7 @@ public class ExperimentCreateController {
                 hBox.getChildren().add(0, localFilePickBtn);
                 Button remoteFilePickBtn = new ImageButton("/images/remote-storage.png");
                 remoteFilePickBtn.setTooltip(new Tooltip("Select remote file"));
-//                hBox.getChildren().add(1, remoteFilePickBtn);
+                // hBox.getChildren().add(1, remoteFilePickBtn);
                 expCreateInputsGridPane.add(hBox, 1, index);
                 localFilePickBtn.setOnAction(event -> {
                     File selectedFile = fileChooser.showOpenDialog(expCreateInputsGridPane.getScene().getWindow());
@@ -667,6 +674,7 @@ public class ExperimentCreateController {
                                 "Failed to load remote file picker");
                     }
                 });
+
                 if(inputDataObjectType.getValue() != null && inputDataObjectType.getValue().startsWith("airavata-dp")){
                     List<DataReplicaLocationModel> replicas = AiravataManager.getInstance().getDataReplicas(inputDataObjectType.getValue());
                     String fileUri = "";
@@ -694,11 +702,20 @@ public class ExperimentCreateController {
 
                 Button remoteFilePickBtn = new ImageButton("/images/remote-storage.png");
                 remoteFilePickBtn.setTooltip(new Tooltip("Select remote file"));
-//                hBox.getChildren().add(1, remoteFilePickBtn);
+                //hBox.getChildren().add(1, remoteFilePickBtn);
 
                 localFilePickBtn.setOnAction(event -> {
                     List<File> selectedFiles = fileChooser.showOpenMultipleDialog(expCreateInputsGridPane.getScene().getWindow());
                     handleMultipleExperimentFileSelect(inputDataObjectType, hBox, localFilePickBtn, remoteFilePickBtn, selectedFiles);
+                });
+
+                pickFile.setOnAction(event -> {
+                    String remotePath = getPreUploadedRemoteFile();
+                    File file = new File(remotePath);
+                    List<File> selectedFiles = new ArrayList<File>();
+                    selectedFiles.add(file);
+                    handleMultipleExperimentFileSelect(inputDataObjectType, hBox, localFilePickBtn, remoteFilePickBtn, selectedFiles);
+                    //handleRemoteExperimentFileSelect(inputDataObjectType, remotePath);
                 });
 
                 if(inputDataObjectType.getValue() != null && inputDataObjectType.getValue().contains("airavata-dp")){
@@ -724,6 +741,22 @@ public class ExperimentCreateController {
             index++;
         }
     }
+
+    private void handleRemoteExperimentFileSelect(InputDataObjectType inputDataObjectType, String remotePath) {
+        try {
+            File file = new File(remotePath);
+            List<File> selectedFiles = new ArrayList<File>();
+            selectedFiles.add(file);
+            if(NextcloudStorageManager.getInstance().isExists(remotePath)) {
+                experimentInputs.put(inputDataObjectType, selectedFiles);
+            }
+        } catch (JSchException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
 
     private void handleExperimentFileSelect(InputDataObjectType inputDataObjectType, HBox hBox, Button localFilePickBtn,
                                             Button remoteFilePickBtn,File selectedFile){
@@ -790,19 +823,29 @@ public class ExperimentCreateController {
                                         expCreateInputsGridPane.getScene().getWindow(), "Failed Opening File");
                             }
                         }
-                    } else {
-                        boolean result = SEAGridDialogHelper.showConfirmDialog("Confirm Action", "Remote File Download", "You have selected a remote file." +
-                                " Do you want to download it ?");
-                        if (result) {
-                            try {
-                                String filePath = selectedFile.getPath();
-                                String remotePath = filePath.replaceAll(remoteDataDirRoot, "");
-                                downloadFile(Paths.get(remotePath), System.getProperty("java.io.tmpdir"));
-                            } catch (Exception e) {
-                                SEAGridDialogHelper.showExceptionDialog(e, "Exception Dialog",
-                                        expCreateInputsGridPane.getScene().getWindow(), "Failed Downloading File");
+                    }
+                    try {
+                        if(NextcloudStorageManager.getInstance().isExists(selectedFile.toString())) {
+                            String test = "";
+                        }
+                        else {
+                            boolean result = SEAGridDialogHelper.showConfirmDialog("Confirm Action", "Remote File Download", "You have selected a remote file." +
+                                    " Do you want to download it ?");
+                            if (result) {
+                                try {
+                                    String filePath = selectedFile.getPath();
+                                    String remotePath = filePath.replaceAll(remoteDataDirRoot, "");
+                                    downloadFile(Paths.get(remotePath), System.getProperty("java.io.tmpdir"));
+                                } catch (Exception e) {
+                                    SEAGridDialogHelper.showExceptionDialog(e, "Exception Dialog",
+                                            expCreateInputsGridPane.getScene().getWindow(), "Failed Downloading File");
+                                }
                             }
                         }
+                    } catch (JSchException e) {
+                        e.printStackTrace();
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
                 });
                 hBox.getChildren().add(i, hyperlink);
@@ -811,6 +854,7 @@ public class ExperimentCreateController {
             }
         }
         hBox.getChildren().add(i, localFilePickBtn);
+
         experimentInputs.put(inputDataObjectType, nonNullSelectedFiles);
 
     }
@@ -844,7 +888,7 @@ public class ExperimentCreateController {
                     //FIXME - Otherwise the file is remote file. This is not a good way to handle this. Should find a better way to handle it
                     if(file.exists())
                         uploadFiles.put("/Documents/" + randomString + "/" + file.getName(), file);
-                }else if(entry.getKey().getType().equals(DataType.URI_COLLECTION)){
+                } else if(entry.getKey().getType().equals(DataType.URI_COLLECTION)){
                     for(File file : (List<File>)entry.getValue()){
                         //FIXME - Otherwise the file is remote file. This is not a good way to handle this. Should find a better way to handle it
                         if(file.exists())
@@ -938,10 +982,11 @@ public class ExperimentCreateController {
         experimentModel.setUserConfigurationData(userConfigurationDataModel);
 
         List<InputDataObjectType> temp = new ArrayList<>();
-        for(InputDataObjectType inputDataObjectType : this.experimentInputs.keySet()){
-            if(inputDataObjectType.getType().equals(DataType.URI)){
+        for(InputDataObjectType inputDataObjectType : this.experimentInputs.keySet()) {
+
+            if (inputDataObjectType.getType().equals(DataType.URI)) {
                 //FIXME - Otherwise the file is remote file. This is not a good way to handle this. Should find a better way to handle it
-                if(((File) this.experimentInputs
+                if (((File) this.experimentInputs
                         .get(inputDataObjectType)).exists()) {
                     String fileName = ((File) this.experimentInputs.get(inputDataObjectType)).getName();
                     String remoteFilePath = remoteDataDir + fileName;
@@ -961,13 +1006,13 @@ public class ExperimentCreateController {
                     String uri = AiravataManager.getInstance().registerDataProduct(dpModel);
                     inputDataObjectType.setValue(uri);
                 }
-            }else if(inputDataObjectType.getType().equals(DataType.URI_COLLECTION)){
+            } else if (inputDataObjectType.getType().equals(DataType.URI_COLLECTION)) {
                 List<File> files = (List<File>) this.experimentInputs.get(inputDataObjectType);
                 //FIXME - Otherwise the files are remote file. This is not a good way to handle this. Should find a better way to handle it
-                if(files.get(0).exists()){
+              // if (files.get(0).exists() ) {
                     String uriCollection = "";
-                    for(File file : files){
-                        if(file.exists()) {
+                    for (File file : files) {
+                        if (file.exists()) {
                             String fileName = file.getName();
                             String remoteFilePath = remoteDataDir + fileName;
                             DataProductModel dpModel = new DataProductModel();
@@ -986,11 +1031,42 @@ public class ExperimentCreateController {
                             String uri = AiravataManager.getInstance().registerDataProduct(dpModel);
                             uriCollection = uriCollection + uri + ",";
                         }
-                    }
-                    uriCollection = uriCollection.substring(0, uriCollection.length() -1);
+                //Handle the pre-datastaging using the Nextcloud storage
+                        try {
+                            if (NextcloudStorageManager.getInstance().isExists(file.toString())) {
+                                //Here is the execution point
+                                String fileName = file.getName();
+                                String remoteFilePath = remoteDataDir + fileName;
+                                String remoteFilePath1 = SEAGridContext.getInstance().getRemoteDataDirPrefix() + "/" + file.toString();
+                                DataProductModel dpModel = new DataProductModel();
+                                dpModel.setGatewayId(SEAGridContext.getInstance().getAiravataGatewayId());
+                                dpModel.setOwnerName(SEAGridContext.getInstance().getUserName());
+                                dpModel.setProductName(fileName);
+                                dpModel.setDataProductType(DataProductType.FILE);
+
+                                DataReplicaLocationModel rpModel = new DataReplicaLocationModel();
+                                rpModel.setStorageResourceId(SEAGridContext.getInstance().getGatewayaStorageId());
+                                rpModel.setReplicaName(fileName + " gateway data store copy");
+                                rpModel.setReplicaLocationCategory(ReplicaLocationCategory.GATEWAY_DATA_STORE);
+                                rpModel.setReplicaPersistentType(ReplicaPersistentType.TRANSIENT);
+                                rpModel.setFilePath(remoteFilePath1);
+                                dpModel.addToReplicaLocations(rpModel);
+                                String uri = AiravataManager.getInstance().registerDataProduct(dpModel);
+                                uriCollection = uriCollection + uri + ",";
+                            }
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        } catch (JSchException e) {
+                            e.printStackTrace();
+                        }
+                        // }
+                    uriCollection = uriCollection.substring(0, uriCollection.length() - 1);
                     inputDataObjectType.setValue(uriCollection);
+
                 }
-            }else{
+
+            }
+            else {
                 inputDataObjectType.setValue((String) this.experimentInputs.get(inputDataObjectType));
             }
             temp.add(inputDataObjectType);

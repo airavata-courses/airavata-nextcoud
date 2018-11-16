@@ -68,7 +68,7 @@ public class PrestageUploadController {
                 File file = fileChooser.showOpenDialog(null);
                 if (file != null) {
                     String fileAsString = file.getName();
-                    String remotePath = "/Documents/InputFiles/" + fileAsString;
+                    String remotePath = "/ExperimentFiles/" + fileAsString;
                     String filePath = file.toString();
                     chosenFile.setText(fileAsString);
                     uploadFiles.put(remotePath, file);
