@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-mysql 
+  namespace: default
+  labels:
+    name: my-mysql
+spec:
+ ports:
+   - port: 3306
+     targetPort: 3306 
+ selector:
+   name: my-mysql 
+ externalIPs:
+ - 10.244.1.29
+
