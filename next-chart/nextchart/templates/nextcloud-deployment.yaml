@@ -1,0 +1,33 @@
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: nextchart
+  labels:
+    app: nextchart
+    nextchart: nextcloud
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nextchart
+      task: nextcloud
+  template:
+    metadata:
+      labels:
+        app: nextchart
+        task: nextcloud
+        version: v0.0.1
+    spec:
+      containers:
+      - name: nextcloud
+        image: nextcloud
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 3Gi
+          limits:
+            cpu: 1000m
+            memory: 3Gi
+        ports:
+        - containerPort: 80

@@ -1,0 +1,4 @@
+aiVersion: v1
+description: A Helm chart for Kubernetes
+name: nextchart
+version: 0.1.0
