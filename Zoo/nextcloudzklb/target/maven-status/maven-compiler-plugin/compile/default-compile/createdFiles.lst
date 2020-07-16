@@ -1,0 +1,3 @@
+com/microservices/nextcloudzk/lb/NextcloudProxyController.class
+com/microservices/nextcloudzk/lb/NextcloudServiceDiscovery.class
+com/microservices/nextcloudzk/lb/NextcloudZkLoadBalancer.class

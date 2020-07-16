@@ -1,0 +1,15 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: my-service
+  annotations:
+    kubernetes.io/ingress.class: "openstack"
+spec:
+  rules:
+  - host: in.cloud.example.com
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: nextcloud
+          servicePort: 80
